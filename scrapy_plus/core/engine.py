@@ -2,6 +2,8 @@
 __author__ = 'ChenJiaBao'
 __date__ = '2019/3/13 17:00'
 # 引擎
+from datetime import datetime
+
 from .downloader import Downloader
 from .spider import Spider
 from .scheduler import Scheduler
@@ -9,6 +11,7 @@ from .pipeline import Pipeline
 from scrapy_plus.http.request import Request
 from scrapy_plus.middlewares.spider_middlewares import SpiderMiddleware
 from scrapy_plus.middlewares.downloader_middlewares import DownloaderMiddleware
+from scrapy_plus.utils.log import logger
 
 
 class Engine(object):
@@ -31,7 +34,12 @@ class Engine(object):
         启动引擎
         :return:
         """
+        start_time = datetime.now()
+        logger.info('爬虫启动：{}'.format(start_time))
         self._start_engine()
+        end_time = datetime.now()
+        logger.info('爬虫结束：{}'.format(end_time))
+        logger.info('爬虫共运行：{}秒'.format((end_time-start_time).total_seconds()))
 
     def _start_engine(self):
         """
