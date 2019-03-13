@@ -18,16 +18,18 @@ class Engine(object):
     """
     提供程序入口，调用其他组件，实现整个框架的运作
     """
-    def __init__(self):
+    def __init__(self, spider):
         """
         初始化各个组件
         """
         self.scheduler = Scheduler()
         self.downloader = Downloader()
         self.pipeline = Pipeline()
-        self.spider = Spider()
+        self.spider = spider
         self.spider_middleware = SpiderMiddleware()
         self.downloader_middleware = DownloaderMiddleware()
+        self.total_request_num = 0
+        self.total_response_num = 0
 
     def start(self):
         """
@@ -40,20 +42,31 @@ class Engine(object):
         end_time = datetime.now()
         logger.info('爬虫结束：{}'.format(end_time))
         logger.info('爬虫共运行：{}秒'.format((end_time-start_time).total_seconds()))
+        logger.info('总的请求数量：{}个'.format(self.total_request_num))
+        logger.info('总的响应数量：{}个'.format(self.total_response_num))
 
-    def _start_engine(self):
+    def _start_request(self):
         """
-        具体实现引擎
+        初始化请求，调用spider的start_request方法，所有请求添加到调度器
         :return:
         """
         # 调用spider start_request方法，获取request对象
-        start_request = self.spider.start_requests()
-        # 对start_request处理
-        start_request = self.spider_middleware.process_request(start_request)
-        # 调用scheduler add_request方法，添加到调度器
-        self.scheduler.add_request(start_request)
+        for start_request in self.spider.start_requests():
+            # 对start_request处理
+            start_request = self.spider_middleware.process_request(start_request)
+            # 调用scheduler add_request方法，添加到调度器
+            self.scheduler.add_request(start_request)
+            self.total_request_num += 1
+
+    def _execute_request_response_item(self):
+        """
+        处理单个请求，从调度器取出，发送请求，获取响应，处理请求
+        :return:
+        """
         # 调用scheduler get_request方法，获取request对象
         request = self.scheduler.get_request()
+        if request is None:
+            return
         # request对象经过下载器中间件处理
         request = self.downloader_middleware.process_request(request)
         # 调用下载器的get_response方法，获取响应
@@ -62,11 +75,25 @@ class Engine(object):
         response = self.downloader_middleware.process_response(response)
         response = self.spider_middleware.process_response(response)
         # 调用爬虫的parse方法， 处理响应
-        result = self.spider.parse(response)
-        # 判断结果，如果为request对象，重新调用调度器的add_request方法
-        if isinstance(result, Request):
-            result = self.spider_middleware.process_request(result)
-            self.scheduler.add_request(result)
-        # 如果不是，调用pipeline的process_item方法,处理结果
-        else:
-            self.pipeline.process_item(result)
+        for result in self.spider.parse(response):
+            # 判断结果，如果为request对象，重新调用调度器的add_request方法
+            if isinstance(result, Request):
+                result = self.spider_middleware.process_request(result)
+                self.scheduler.add_request(result)
+                self.total_request_num += 1
+            # 如果不是，调用pipeline的process_item方法,处理结果
+            else:
+                self.pipeline.process_item(result)
+        self.total_response_num += 1
+
+    def _start_engine(self):
+        """
+        具体实现引擎
+        :return:
+        """
+        self._start_request()
+        while True:
+            self._execute_request_response_item()
+            if self.total_response_num >= self.total_request_num:
+                break
+

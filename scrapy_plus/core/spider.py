@@ -10,14 +10,15 @@ class Spider(object):
     """
     spider对象封装
     """
-    start_url = 'http://www.baidu.com'
+    start_url = []
 
     def start_requests(self):
         """
         构造start_url地址的请求
         :return:
         """
-        return Request(self.start_url)
+        for url in self.start_url:
+            yield Request(url)
 
     def parse(self, response):
         """
@@ -25,6 +26,6 @@ class Spider(object):
         :param response: response对象
         :return:
         """
-        return Item(response.body)
+        yield Item(response.body)
 
 

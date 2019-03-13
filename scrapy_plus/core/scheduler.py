@@ -25,7 +25,10 @@ class Scheduler(object):
         从队列中取request对象
         :return:
         """
-        return self.queue.get()
+        try:
+            return self.queue.get(block=False)
+        except:
+            return None
 
     def _filter_request(self, request):
         """
