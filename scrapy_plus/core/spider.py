@@ -2,8 +2,8 @@
 __author__ = 'ChenJiaBao'
 __date__ = '2019/3/13 17:01'
 # spider组件
-from http.request import Request
-from item import Item
+from scrapy_plus.http.request import Request
+from scrapy_plus.item import Item
 
 
 class Spider(object):

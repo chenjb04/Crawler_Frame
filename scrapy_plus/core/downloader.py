@@ -4,7 +4,7 @@ __date__ = '2019/3/13 17:01'
 # 下载器
 import requests
 
-from http.response import Response
+from scrapy_plus.http.response import Response
 
 
 class Downloader(object):
