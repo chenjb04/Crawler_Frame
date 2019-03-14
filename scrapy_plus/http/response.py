@@ -11,18 +11,20 @@ class Response(object):
     """
     框架内置Response对象
     """
-    def __init__(self, url, status_code, headers, body):
+    def __init__(self, url, status_code, headers, body, meta={}):
         """
         初始化response对象
         :param url: 响应url地址
         :param status_code: 响应状态码
         :param headers: 响应头
         :param body: 响应体
+        :param meta: 接收request的值
         """
         self.url = url
         self.status_code = status_code
         self.headers = headers
         self.body = body
+        self.meta = meta
 
     def xpath(self, rule):
         """

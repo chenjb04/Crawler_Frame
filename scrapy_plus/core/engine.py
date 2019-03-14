@@ -71,11 +71,15 @@ class Engine(object):
         request = self.downloader_middleware.process_request(request)
         # 调用下载器的get_response方法，获取响应
         response = self.downloader.get_response(request)
+        # request meta值传递给response meta
+        response.meta = request.meta
         # response经过下载器中间件和爬虫中间件处理
         response = self.downloader_middleware.process_response(response)
         response = self.spider_middleware.process_response(response)
+        # 获取request对象响应的parse方法
+        parse = getattr(self.spider, request.parse)
         # 调用爬虫的parse方法， 处理响应
-        for result in self.spider.parse(response):
+        for result in parse(response):
             # 判断结果，如果为request对象，重新调用调度器的add_request方法
             if isinstance(result, Request):
                 result = self.spider_middleware.process_request(result)
