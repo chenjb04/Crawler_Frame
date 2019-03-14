@@ -18,13 +18,13 @@ class Engine(object):
     """
     提供程序入口，调用其他组件，实现整个框架的运作
     """
-    def __init__(self, spiders):
+    def __init__(self, spiders, piplines=[]):
         """
         初始化各个组件
         """
         self.scheduler = Scheduler()
         self.downloader = Downloader()
-        self.pipeline = Pipeline()
+        self.pipelines = piplines
         self.spiders = spiders
         self.spider_middleware = SpiderMiddleware()
         self.downloader_middleware = DownloaderMiddleware()
@@ -92,7 +92,9 @@ class Engine(object):
                 self.total_request_num += 1
             # 如果不是，调用pipeline的process_item方法,处理结果
             else:
-                self.pipeline.process_item(result)
+                # 变量所有的管道
+                for pipeline in self.pipelines:
+                    result = pipeline.process_item(result, spider)
         self.total_response_num += 1
 
     def _start_engine(self):
