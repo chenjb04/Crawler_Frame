@@ -18,16 +18,16 @@ class Engine(object):
     """
     提供程序入口，调用其他组件，实现整个框架的运作
     """
-    def __init__(self, spiders, piplines=[]):
+    def __init__(self, spiders, pipelines=[], spider_middlewares=[], downloader_middlewares=[]):
         """
         初始化各个组件
         """
         self.scheduler = Scheduler()
         self.downloader = Downloader()
-        self.pipelines = piplines
+        self.pipelines = pipelines
         self.spiders = spiders
-        self.spider_middleware = SpiderMiddleware()
-        self.downloader_middleware = DownloaderMiddleware()
+        self.spider_middlewares = spider_middlewares
+        self.downloader_middlewares = downloader_middlewares
         self.total_request_num = 0
         self.total_response_num = 0
 
@@ -54,7 +54,8 @@ class Engine(object):
             # 调用spider start_request方法，获取request对象
             for start_request in spider.start_requests():
                 # 对start_request处理
-                start_request = self.spider_middleware.process_request(start_request)
+                for spider_middleware in self.spider_middlewares:
+                    start_request = spider_middleware.process_request(start_request)
                 # 初始请求添加spider_name
                 start_request.spider_name = spider_name
                 # 调用scheduler add_request方法，添加到调度器
@@ -71,14 +72,17 @@ class Engine(object):
         if request is None:
             return
         # request对象经过下载器中间件处理
-        request = self.downloader_middleware.process_request(request)
+        for downloader_middleware in self.downloader_middlewares:
+            request = downloader_middleware.process_request(request)
         # 调用下载器的get_response方法，获取响应
         response = self.downloader.get_response(request)
         # request meta值传递给response meta
         response.meta = request.meta
         # response经过下载器中间件和爬虫中间件处理
-        response = self.downloader_middleware.process_response(response)
-        response = self.spider_middleware.process_response(response)
+        for downloader_middleware in self.downloader_middlewares:
+            response = downloader_middleware.process_response(response)
+        for spider_middleware in self.spider_middlewares:
+            response = spider_middleware.process_response(response)
         # 获取request对象响应的parse方法
         spider = self.spiders[request.spider_name]
         parse = getattr(spider, request.parse)
@@ -86,7 +90,8 @@ class Engine(object):
         for result in parse(response):
             # 判断结果，如果为request对象，重新调用调度器的add_request方法
             if isinstance(result, Request):
-                result = self.spider_middleware.process_request(result)
+                for spider_middleware in self.spider_middlewares:
+                    result = spider_middleware.process_request(result)
                 result.spider_name = request.spider_name
                 self.scheduler.add_request(result)
                 self.total_request_num += 1
