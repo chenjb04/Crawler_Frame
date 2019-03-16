@@ -3,6 +3,10 @@ __author__ = 'ChenJiaBao'
 __date__ = '2019/3/13 17:00'
 # 调度器封装
 from queue import Queue
+import w3lib.url
+from hashlib import sha1
+
+from scrapy_plus.utils.log import logger
 
 
 class Scheduler(object):
@@ -11,6 +15,10 @@ class Scheduler(object):
     """
     def __init__(self):
         self.queue = Queue()
+        # 保存指纹的集合
+        self._filter_container = set()
+        # 重复的数量
+        self.repeat_request_num = 0
 
     def add_request(self, request):
         """
@@ -18,7 +26,8 @@ class Scheduler(object):
         :param request: 请求对象
         :return:
         """
-        self.queue.put(request)
+        if self._filter_request(request):
+            self.queue.put(request)
 
     def get_request(self):
         """
@@ -36,4 +45,45 @@ class Scheduler(object):
         :param request:请求对象
         :return:
         """
-        pass
+        # request对象添加fp属性，保存指纹
+        request.fp = self._gen_fp(request)
+        if request.fp not in self._filter_container:
+            self._filter_container.add(request.fp)
+            return True
+        else:
+            logger.info("发现重复请求：<{} {}>".format(request.method, request.url))
+            self.repeat_request_num += 1
+
+    def _gen_fp(self, request):
+        """
+        生成request对象指纹
+        :param request:
+        :return:
+        """
+        # 对url地址进行排序
+        url = w3lib.url.canonicalize_url(request.url)
+        # 请求方法
+        method = request.method.upper()
+        # 请求参数
+        params = request.params if request.params is not None else {}
+        params = str(sorted(params.items(), key=lambda x: x[0]))
+        # 请求体
+        data = request.data if request.data is not None else {}
+        data = str(sorted(data.items(), key=lambda x: x[0]))
+        # 使用sha1加密
+        fp = sha1()
+        fp.update(self._to_bytes(url))
+        fp.update(self._to_bytes(method))
+        fp.update(self._to_bytes(params))
+        fp.update(self._to_bytes(data))
+
+        return fp.hexdigest()
+
+    @staticmethod
+    def _to_bytes(string):
+        """
+        将字符串转换为bytes
+        :param string:
+        :return:
+        """
+        return string.encode("utf-8")
