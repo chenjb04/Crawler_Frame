@@ -3,33 +3,55 @@ __author__ = 'ChenJiaBao'
 __date__ = '2019/3/13 17:00'
 # 引擎
 from datetime import datetime
+import importlib
 
 from .downloader import Downloader
-from .spider import Spider
 from .scheduler import Scheduler
-from .pipeline import Pipeline
 from scrapy_plus.http.request import Request
-from scrapy_plus.middlewares.spider_middlewares import SpiderMiddleware
-from scrapy_plus.middlewares.downloader_middlewares import DownloaderMiddleware
 from scrapy_plus.utils.log import logger
+from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES
 
 
 class Engine(object):
     """
     提供程序入口，调用其他组件，实现整个框架的运作
     """
-    def __init__(self, spiders, pipelines=[], spider_middlewares=[], downloader_middlewares=[]):
+    def __init__(self):
         """
         初始化各个组件
         """
         self.scheduler = Scheduler()
         self.downloader = Downloader()
-        self.pipelines = pipelines
-        self.spiders = spiders
-        self.spider_middlewares = spider_middlewares
-        self.downloader_middlewares = downloader_middlewares
+        self.pipelines = self._auto_import_instances(PIPELINES)
+        self.spiders = self._auto_import_instances(SPIDERS, is_spider=True)
+        self.spider_middlewares = self._auto_import_instances(SPIDER_MIDDLEWARES)
+        self.downloader_middlewares = self._auto_import_instances(DOWNLOADER_MIDDLEWARES)
         self.total_request_num = 0
         self.total_response_num = 0
+
+    def _auto_import_instances(self, path, is_spider=False):
+        """
+        实现模块动态导入。传入模块路径列表
+        :param path:
+        :return:
+        """
+        if is_spider:
+            instances = {}
+        else:
+            instances = []
+        for p in path:
+            # 模块路径名称
+            module_name = p.rsplit(".", 1)[0]
+            # 类名
+            cls_name = p.rsplit(".", 1)[-1]
+            module = importlib.import_module(module_name)
+            # 获取module下的类
+            cls = getattr(module, cls_name)
+            if is_spider:
+                instances[cls().name] = cls()
+            else:
+                instances.append(cls())
+        return instances
 
     def start(self):
         """
