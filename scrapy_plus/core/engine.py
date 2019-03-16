@@ -4,12 +4,23 @@ __date__ = '2019/3/13 17:00'
 # 引擎
 from datetime import datetime
 import importlib
+import time
+
+from scrapy_plus.conf.settings import ASYNC_TYPE
+if ASYNC_TYPE == 'thread':
+    from multiprocessing.dummy import Pool
+elif ASYNC_TYPE == 'coroutine':
+    from gevent.pool import Pool
+    from gevent.monkey import patch_all
+    patch_all()
+else:
+    raise Exception("不支持异步方式")
 
 from .downloader import Downloader
 from .scheduler import Scheduler
 from scrapy_plus.http.request import Request
 from scrapy_plus.utils.log import logger
-from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES
+from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES, CONCURRENT_REQUEST
 
 
 class Engine(object):
@@ -28,6 +39,8 @@ class Engine(object):
         self.downloader_middlewares = self._auto_import_instances(DOWNLOADER_MIDDLEWARES)
         self.total_request_num = 0
         self.total_response_num = 0
+        self.pool = Pool(5)
+        self.is_running = False
 
     def _auto_import_instances(self, path, is_spider=False):
         """
@@ -64,6 +77,8 @@ class Engine(object):
         logger.info("当前开启的管道：{}".format(PIPELINES))
         logger.info("当前开启爬虫的中间件：{}".format(SPIDER_MIDDLEWARES))
         logger.info("当前开启下载器的中间件：{}".format(DOWNLOADER_MIDDLEWARES))
+        logger.info("当前启用的异步方式是：{}".format(ASYNC_TYPE))
+        self.is_running = True
         self._start_engine()
         end_time = datetime.now()
         logger.info('爬虫结束：{}'.format(end_time))
@@ -129,14 +144,28 @@ class Engine(object):
                     result = pipeline.process_item(result, spider)
         self.total_response_num += 1
 
+    def _callback(self, temp):
+        """
+        回调函数
+        :param temp:
+        :return:
+        """
+        if self.is_running:
+            self.pool.apply_async(self._execute_request_response_item, callback=self._callback)
+
     def _start_engine(self):
         """
         具体实现引擎
         :return:
         """
-        self._start_request()
+        self.pool.apply_async(self._start_request)
+        for i in range(CONCURRENT_REQUEST):
+            self.pool.apply_async(self._execute_request_response_item, callback=self._callback)
         while True:
-            self._execute_request_response_item()
-            if self.total_response_num + self.scheduler.repeat_request_num >= self.total_request_num:
-                break
+            time.sleep(0.0001)
+            # 不会让主线程过快结束
+            if self.total_request_num != 0:
+                if self.total_response_num + self.scheduler.repeat_request_num >= self.total_request_num:
+                    self.is_running = False
+                    break
 
