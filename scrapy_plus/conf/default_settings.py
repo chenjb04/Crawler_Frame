@@ -15,3 +15,18 @@ CONCURRENT_REQUEST = 5
 
 # 异步方式
 ASYNC_TYPE = 'coroutine'
+
+# 分布式
+SCHEDULER_PERSIST = True
+
+# redis队列默认配置
+REDIS_QUEUE_NAME = 'request_queue'
+REDIS_QUEUE_HOST = 'localhost'
+REDIS_QUEUE_PORT = 6379
+REDIS_QUEUE_DB = 0
+
+# redis指纹集合
+REDIS_SET_NAME = "redis_set"
+REDIS_SET_HOST = "localhost"
+REDIS_SET_PORT = 6379
+REDIS_SET_DB = 0

@@ -7,18 +7,28 @@ import w3lib.url
 from hashlib import sha1
 
 from scrapy_plus.utils.log import logger
+from scrapy_plus.utils.redis_queue import Queue as RedisQueue
+from scrapy_plus.conf.settings import SCHEDULER_PERSIST
+from scrapy_plus.utils.set import NoramlFilterContainer, RedisFilterContainer
 
 
 class Scheduler(object):
     """
     scheduler:缓存请求对象，为下载器提供请求对象，对请求对象进行去重
     """
-    def __init__(self):
-        self.queue = Queue()
-        # 保存指纹的集合
-        self._filter_container = set()
+    def __init__(self, collector):
+        if not SCHEDULER_PERSIST:
+            self.queue = Queue()
+            # 保存指纹的集合
+            self._filter_container = NoramlFilterContainer()
+        else:
+            # 分布式 redisqueue
+            self.queue = RedisQueue()
+            # 保存分布式指纹的集合
+            self._filter_container = RedisFilterContainer()
         # 重复的数量
-        self.repeat_request_num = 0
+        # self.repeat_request_num = 0
+        self.collector = collector
 
     def add_request(self, request):
         """
@@ -47,12 +57,12 @@ class Scheduler(object):
         """
         # request对象添加fp属性，保存指纹
         request.fp = self._gen_fp(request)
-        if request.fp not in self._filter_container:
-            self._filter_container.add(request.fp)
+        if not self._filter_container.exists(request.fp):
+            self._filter_container.add_fp(request.fp)
             return True
         else:
             logger.info("发现重复请求：<{} {}>".format(request.method, request.url))
-            self.repeat_request_num += 1
+            self.collector.incr(self.collector.repeat_request_num_key)
 
     def _gen_fp(self, request):
         """

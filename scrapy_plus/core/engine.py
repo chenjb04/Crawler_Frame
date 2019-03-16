@@ -21,6 +21,7 @@ from .scheduler import Scheduler
 from scrapy_plus.http.request import Request
 from scrapy_plus.utils.log import logger
 from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES, CONCURRENT_REQUEST
+from scrapy_plus.utils.stats_collector import StatsCollector
 
 
 class Engine(object):
@@ -31,14 +32,15 @@ class Engine(object):
         """
         初始化各个组件
         """
-        self.scheduler = Scheduler()
+        self.spiders = self._auto_import_instances(SPIDERS, is_spider=True)
+        self.collector = StatsCollector(list(self.spiders.keys()))
+        self.scheduler = Scheduler(self.collector)
         self.downloader = Downloader()
         self.pipelines = self._auto_import_instances(PIPELINES)
-        self.spiders = self._auto_import_instances(SPIDERS, is_spider=True)
         self.spider_middlewares = self._auto_import_instances(SPIDER_MIDDLEWARES)
         self.downloader_middlewares = self._auto_import_instances(DOWNLOADER_MIDDLEWARES)
-        self.total_request_num = 0
-        self.total_response_num = 0
+        # self.total_request_num = 0
+        # self.total_response_num = 0
         self.pool = Pool(5)
         self.is_running = False
 
@@ -83,9 +85,11 @@ class Engine(object):
         end_time = datetime.now()
         logger.info('爬虫结束：{}'.format(end_time))
         logger.info('爬虫共运行：{}秒'.format((end_time-start_time).total_seconds()))
-        logger.info('总的请求数量：{}个'.format(self.total_request_num))
-        logger.info('总的响应数量：{}个'.format(self.total_response_num))
-        logger.info('总的重复数量：{}个'.format(self.scheduler.repeat_request_num))
+        logger.info('总的请求数量：{}个'.format(self.collector.request_num))
+        logger.info('总的响应数量：{}个'.format(self.collector.response_num))
+        logger.info('总的重复数量：{}个'.format(self.collector.repeat_request_num))
+        # 清除redis中的状态数量统计
+        self.collector.clear()
 
     def _start_request(self):
         """
@@ -102,7 +106,8 @@ class Engine(object):
                 start_request.spider_name = spider_name
                 # 调用scheduler add_request方法，添加到调度器
                 self.scheduler.add_request(start_request)
-                self.total_request_num += 1
+                # 对redis请求数量加1
+                self.collector.incr(self.collector.request_num_key)
 
     def _execute_request_response_item(self):
         """
@@ -136,13 +141,14 @@ class Engine(object):
                     result = spider_middleware.process_request(result)
                 result.spider_name = request.spider_name
                 self.scheduler.add_request(result)
-                self.total_request_num += 1
+                # 对redis请求数量加1
+                self.collector.incr(self.collector.request_num_key)
             # 如果不是，调用pipeline的process_item方法,处理结果
             else:
                 # 变量所有的管道
                 for pipeline in self.pipelines:
                     result = pipeline.process_item(result, spider)
-        self.total_response_num += 1
+        self.collector.incr(self.collector.response_num_key)
 
     def _callback(self, temp):
         """
@@ -164,8 +170,8 @@ class Engine(object):
         while True:
             time.sleep(0.0001)
             # 不会让主线程过快结束
-            if self.total_request_num != 0:
-                if self.total_response_num + self.scheduler.repeat_request_num >= self.total_request_num:
+            if self.collector.request_num != 0:
+                if self.collector.response_num + self.collector.repeat_request_num >= self.collector.request_num:
                     self.is_running = False
                     break
 
