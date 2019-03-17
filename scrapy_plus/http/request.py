@@ -9,7 +9,7 @@ class Request(object):
     框架内置请求对象
     """
 
-    def __init__(self, url, method='GET', headers=None, params=None, data=None, parse='parse', meta=None):
+    def __init__(self, url, method='GET', headers=None, params=None, data=None, parse='parse', meta=None, filter=True):
         """
         初始化request对象
         :param url: 请求地址
@@ -19,6 +19,7 @@ class Request(object):
         :param data: 请求体
         :param parse: 解析函数的函数名
         :param meta: 不同解析函数之间传递数据
+        :param filter: 请求是否去重
         """
         self.url = url
         self.method = method
@@ -27,3 +28,5 @@ class Request(object):
         self.data = data
         self.parse = parse
         self.meta = meta
+        # 默认为去重，False不进行去重
+        self.filter = filter

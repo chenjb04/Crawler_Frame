@@ -36,6 +36,12 @@ class Scheduler(object):
         :param request: 请求对象
         :return:
         """
+        # 判断请求是否去重
+        if not request.filter:
+            request.fp = self._gen_fp(request)
+            self.queue.put(request)
+            logger.info("添加不去重的请求<{} {}>".format(request.method, request.url))
+            return
         if self._filter_request(request):
             self.queue.put(request)
 

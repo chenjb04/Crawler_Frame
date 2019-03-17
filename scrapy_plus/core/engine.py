@@ -96,7 +96,7 @@ class Engine(object):
         初始化请求，调用spider的start_request方法，所有请求添加到调度器
         :return:
         """
-        for spider_name, spider in self.spiders.items():
+        def _func(spider_name, spider):
             # 调用spider start_request方法，获取request对象
             for start_request in spider.start_requests():
                 # 对start_request处理
@@ -108,6 +108,12 @@ class Engine(object):
                 self.scheduler.add_request(start_request)
                 # 对redis请求数量加1
                 self.collector.incr(self.collector.request_num_key)
+
+        for spider_name, spider in self.spiders.items():
+            self.pool.apply_async(_func, args=(spider_name, spider), callback=self._callback_start_request_nums)
+
+    def _callback_start_request_nums(self):
+        self.collector.incr(self.collector.start_request_num_key)
 
     def _execute_request_response_item(self):
         """
@@ -170,7 +176,7 @@ class Engine(object):
         while True:
             time.sleep(0.0001)
             # 不会让主线程过快结束
-            if self.collector.request_num != 0:
+            if self.collector.start_request_num == len(self.spiders):
                 if self.collector.response_num + self.collector.repeat_request_num >= self.collector.request_num:
                     self.is_running = False
                     break
