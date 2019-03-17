@@ -30,3 +30,11 @@ REDIS_SET_NAME = "redis_set"
 REDIS_SET_HOST = "localhost"
 REDIS_SET_PORT = 6379
 REDIS_SET_DB = 0
+
+#redi备份的位置
+REDIS_BACKUP_NAME = "redis_backup"
+REDIS_BACKUP_HOST = "localhost"
+REDIS_BACKUP_PORT = 6379
+REDIS_BACKUP_DB = 0
+
+MAX_RETRY_TIME = 3

@@ -22,6 +22,7 @@ from scrapy_plus.http.request import Request
 from scrapy_plus.utils.log import logger
 from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES, CONCURRENT_REQUEST
 from scrapy_plus.utils.stats_collector import StatsCollector
+from scrapy_plus.utils.redis_hash import RedisBackupRequest
 
 
 class Engine(object):
@@ -34,6 +35,7 @@ class Engine(object):
         """
         self.spiders = self._auto_import_instances(SPIDERS, is_spider=True)
         self.collector = StatsCollector(list(self.spiders.keys()))
+        self.request_backup = RedisBackupRequest()
         self.scheduler = Scheduler(self.collector)
         self.downloader = Downloader()
         self.pipelines = self._auto_import_instances(PIPELINES)
@@ -112,7 +114,7 @@ class Engine(object):
         for spider_name, spider in self.spiders.items():
             self.pool.apply_async(_func, args=(spider_name, spider), callback=self._callback_start_request_nums)
 
-    def _callback_start_request_nums(self):
+    def _callback_start_request_nums(self, temp):
         self.collector.incr(self.collector.start_request_num_key)
 
     def _execute_request_response_item(self):
@@ -155,6 +157,8 @@ class Engine(object):
                 for pipeline in self.pipelines:
                     result = pipeline.process_item(result, spider)
         self.collector.incr(self.collector.response_num_key)
+        # 从备份队列删除请求
+        self.request_backup.delete_request(request.fp)
 
     def _callback(self, temp):
         """
@@ -170,14 +174,27 @@ class Engine(object):
         具体实现引擎
         :return:
         """
+        if self.request_backup.exist_request_backup():
+            self.scheduler.add_lost_request()
+            for i in range(CONCURRENT_REQUEST):
+                self.pool.apply_async(self._execute_request_response_item, callback=self._callback)
+
         self.pool.apply_async(self._start_request)
         for i in range(CONCURRENT_REQUEST):
             self.pool.apply_async(self._execute_request_response_item, callback=self._callback)
         while True:
             time.sleep(0.0001)
             # 不会让主线程过快结束
-            if self.collector.start_request_num == len(self.spiders):
+            if self.collector.start_request_num == len(self.spiders) and not self.request_backup.exist_request_backup():
                 if self.collector.response_num + self.collector.repeat_request_num >= self.collector.request_num:
                     self.is_running = False
                     break
 
+    def finish_backup_request(self):
+        self.scheduler.add_lost_request()
+        for i in range(CONCURRENT_REQUEST):
+            self.pool.apply_async(self._execute_request_response_item, callback=self._callback)
+
+    def _callback_finish_backup_request(self, temp):
+        if self.request_backup.exist_request_backup():
+            self.pool.apply_async(self.finish_backup_request, callback=self._callback_finish_backup_request)

@@ -30,3 +30,5 @@ class Request(object):
         self.meta = meta
         # 默认为去重，False不进行去重
         self.filter = filter
+        # 重试次数
+        self.retry_time = 0

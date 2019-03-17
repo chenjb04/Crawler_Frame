@@ -8,8 +8,9 @@ from hashlib import sha1
 
 from scrapy_plus.utils.log import logger
 from scrapy_plus.utils.redis_queue import Queue as RedisQueue
-from scrapy_plus.conf.settings import SCHEDULER_PERSIST
+from scrapy_plus.conf.settings import SCHEDULER_PERSIST, MAX_RETRY_TIME
 from scrapy_plus.utils.set import NoramlFilterContainer, RedisFilterContainer
+from scrapy_plus.utils.redis_hash import RedisBackupRequest
 
 
 class Scheduler(object):
@@ -29,6 +30,7 @@ class Scheduler(object):
         # 重复的数量
         # self.repeat_request_num = 0
         self.collector = collector
+        self.request_backup = RedisBackupRequest()
 
     def add_request(self, request):
         """
@@ -43,7 +45,8 @@ class Scheduler(object):
             logger.info("添加不去重的请求<{} {}>".format(request.method, request.url))
             return
         if self._filter_request(request):
-            self.queue.put(request)
+            if SCHEDULER_PERSIST:
+                self.request_backup.save_request(request.fp, request)
 
     def get_request(self):
         """
@@ -54,6 +57,22 @@ class Scheduler(object):
             return self.queue.get(block=False)
         except:
             return None
+        else:
+            if request.filter and SCHEDULER_PERSIST:
+                if request.retry_time >= MAX_RETRY_TIME:
+                    self.request_backup.delete_request(request.fp)
+                request.retry_time += 1
+                self.request_backup.save_request(request.fp, request)
+            return request
+
+    def add_lost_request(self):
+        if SCHEDULER_PERSIST:
+            for request in self.request_backup.get_requests():
+                # 之前已经添加过指纹，备份容器恢复的时候，需要先把指纹删除
+                self._filter_container.delete_fp(request.fp)
+                # 对之前添加过的请求数量进行-1
+                # self.collector.decr(self.collector.request_nums_key)
+                self.queue.put(request)
 
     def _filter_request(self, request):
         """
